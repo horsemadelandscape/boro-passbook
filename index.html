@@ -584,10 +584,12 @@ function openMailSheet(name,email,pass,bal){
 ログイン後、パスワードの変更をお將めします。
 どうぞよろしくお願いいたします。`;
   const mailtoLink=`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${encodeURIComponent(body)}`;
+  const gmailLink=`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}&su=${subject}&body=${encodeURIComponent(body)}`;
   document.getElementById("mail-preview").innerHTML=
     `<strong>宛先:</strong> ${esc(email)}<br><strong>氏名:</strong> ${esc(name)}<br><strong>パスワード:</strong> ${esc(pass)}<br><strong>初期残高:</strong> ${bal}ボロ`;
   document.getElementById("mail-mailto").innerHTML=
-    `<a href="${mailtoLink}" style="display:flex;align-items:center;justify-content:center;padding:15px;background:var(--green);color:#fff;border-radius:var(--rs);font-size:16px;font-weight:500;text-decoration:none">メールアプリで送信する</a>`;
+    `<a href="${mailtoLink}" style="display:flex;align-items:center;justify-content:center;padding:15px 20px;background:var(--green);color:#fff;border-radius:var(--rs);font-size:15px;font-weight:500;text-decoration:none;margin-bottom:10px">📧 デフォルトのメールアプリで送る</a>
+     <a href="${gmailLink}" target="_blank" style="display:flex;align-items:center;justify-content:center;padding:15px 20px;background:#EA4335;color:#fff;border-radius:var(--rs);font-size:15px;font-weight:500;text-decoration:none">✉️ Gmailで送る</a>`;
   document.getElementById("mail-overlay").classList.add("open");
   showAdminTab("members");
 }
