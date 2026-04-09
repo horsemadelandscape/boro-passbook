@@ -378,7 +378,7 @@ async function doLogin(){
       return;
     }
     currentEmail=email;
-    localStorage.setItem('boro_session', email); 
+    localStorage.setItem('boro_session',email);
     if(u.isAdmin)showAdmin();
     else showUser(email,u);
   }catch(e){
@@ -396,7 +396,7 @@ function doLogout(){
   if(txnListener){txnListener();txnListener=null;}
   if(membersListener){membersListener();membersListener=null;}
   currentEmail=null;
-  localStorage.removeItem('boro_session'); 
+  localStorage.removeItem('boro_session');
   document.getElementById("l-email").value="";
   document.getElementById("l-pass").value="";
   document.getElementById("l-err").style.display="none";
@@ -479,7 +479,7 @@ function renderMemberList(members){
         <div class="member-acts">
           <button class="btn btn-sm btn-green" onclick="openTxnSheet('pay',this.dataset.e,this.dataset.n)" data-e="${email.replace(/'/g,'\'')}" data-n="${u.name.replace(/'/g,'\'')}">支払い</button>
           <button class="btn btn-sm btn-outline-red" style="border-width:1px" onclick="openTxnSheet('recv',this.dataset.e,this.dataset.n)" data-e="${email.replace(/'/g,'\'')}" data-n="${u.name.replace(/'/g,'\'')}">受取り</button>
-          <button class="btn btn-sm" style="color:var(--text3);font-size:12px" onclick="openDelSheet(this.dataset.e,this.dataset.n)" data-e="${email.replace(/'/g,'\'')}" data-n="${u.name.replace(/'/g,'\'')}">削除</button>
+          <button class="btn btn-sm btn-outline-red" style="border-width:1px;font-size:13px" onclick="openDelSheet(this.dataset.e,this.dataset.n)" data-e="${email.replace(/'/g,'\'')}" data-n="${u.name.replace(/'/g,'\'')}">削除</button>
         </div>
       </div>
       <div><div class="member-bal">${u.balance.toLocaleString()}<small>ボロ</small></div></div>
@@ -668,17 +668,8 @@ function confirmDeleteAccount(){document.getElementById("confirm-bg").classList.
 function closeConfirm(){document.getElementById("confirm-bg").classList.remove("open");}
 async function execDeleteAccount(){
   if(!currentEmail)return;
-  const ok=initFirebase();
-  if(ok){
-    await ensureAdminExists();
-    const saved=localStorage.getItem('boro_session');
-    if(saved){
-      const snap=await db.ref("users/"+encodeKey(saved)).once("value");
-      const u=snap.val();
-      if(u){currentEmail=saved;if(u.isAdmin)showAdmin();else showUser(saved,u);}
-    }
-  }
-  
+  const key=encodeKey(currentEmail);
+  try{
     await db.ref("users/"+key).remove();
     await db.ref("transactions/"+key).remove();
     closeConfirm();
@@ -690,7 +681,17 @@ async function execDeleteAccount(){
 // アプリ起動
 (async()=>{
   const ok=initFirebase();
-  if(ok)await ensureAdminExists();
+  if(ok){
+    await ensureAdminExists();
+    const saved=localStorage.getItem('boro_session');
+    if(saved){
+      try{
+        const snap=await db.ref("users/"+encodeKey(saved)).once("value");
+        const u=snap.val();
+        if(u){currentEmail=saved;if(u.isAdmin)showAdmin();else showUser(saved,u);}
+      }catch(e){localStorage.removeItem('boro_session');}
+    }
+  }
 })();
 </script>
 </body>
