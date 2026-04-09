@@ -158,6 +158,23 @@ input,textarea,button{font-family:inherit;font-size:16px}
       <button class="btn" onclick="doLogout()">ログアウト</button>
     </div>
     <div class="card">
+      <div class="sec-hd">パスワードを変更する</div>
+      <div class="form-field">
+        <label>現在のパスワード</label>
+        <input type="password" id="pw-current" placeholder="現在のパスワード"/>
+      </div>
+      <div class="form-field">
+        <label>新しいパスワード</label>
+        <input type="password" id="pw-new" placeholder="新しいパスワード（6文字以上）"/>
+      </div>
+      <div class="form-field">
+        <label>新しいパスワード（確認）</label>
+        <input type="password" id="pw-confirm" placeholder="もう一度入力"/>
+      </div>
+      <div id="pw-err" class="error" style="display:none"></div>
+      <button class="btn btn-green" onclick="doChangePassword()">変更する</button>
+    </div>
+    <div class="card">
       <div class="sec-hd">アカウント削除</div>
       <p style="font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.6">アカウントを削除すると、残高・履歴はすべて失われます。この操作は取り消せません。</p>
       <button class="btn btn-outline-red" onclick="confirmDeleteAccount()">アカウントを削除する</button>
@@ -458,9 +475,9 @@ function renderMemberList(members){
         <div class="member-name">${esc(u.name)}</div>
         <div class="member-email">${esc(email)}</div>
         <div class="member-acts">
-          <button class="btn btn-sm btn-green" onclick="openTxnSheet('pay',${JSON.stringify(email)},${JSON.stringify(u.name)})">支払い</button>
-          <button class="btn btn-sm btn-outline-red" style="border-width:1px" onclick="openTxnSheet('recv',${JSON.stringify(email)},${JSON.stringify(u.name)})">受取り</button>
-          <button class="btn btn-sm" style="color:var(--text3);font-size:12px" onclick="openDelSheet(${JSON.stringify(email)},${JSON.stringify(u.name)})">削除</button>
+          <button class="btn btn-sm btn-green" onclick="openTxnSheet('pay',this.dataset.e,this.dataset.n)" data-e="${email.replace(/'/g,'\'')}" data-n="${u.name.replace(/'/g,'\'')}">支払い</button>
+          <button class="btn btn-sm btn-outline-red" style="border-width:1px" onclick="openTxnSheet('recv',this.dataset.e,this.dataset.n)" data-e="${email.replace(/'/g,'\'')}" data-n="${u.name.replace(/'/g,'\'')}">受取り</button>
+          <button class="btn btn-sm" style="color:var(--text3);font-size:12px" onclick="openDelSheet(this.dataset.e,this.dataset.n)" data-e="${email.replace(/'/g,'\'')}" data-n="${u.name.replace(/'/g,'\'')}">削除</button>
         </div>
       </div>
       <div><div class="member-bal">${u.balance.toLocaleString()}<small>ボロ</small></div></div>
@@ -614,6 +631,32 @@ async function execDeleteMember(){
   }catch(e){toast("削除エラー: "+e.message);}
 }
 
+async function doChangePassword(){
+  const current=document.getElementById("pw-current").value;
+  const newPw=document.getElementById("pw-new").value;
+  const confirm=document.getElementById("pw-confirm").value;
+  const errEl=document.getElementById("pw-err");
+  errEl.style.display="none";
+  if(!current||!newPw||!confirm){
+    errEl.style.display="block";errEl.textContent="すべての項目を入力してください";return;
+  }
+  if(newPw.length<6){
+    errEl.style.display="block";errEl.textContent="新しいパスワードは6文字以上にしてください";return;
+  }
+  if(newPw!==confirm){
+    errEl.style.display="block";errEl.textContent="新しいパスワードが一致しません";return;
+  }
+  const key=encodeKey(currentEmail);
+  const snap=await db.ref("users/"+key+"/password").once("value");
+  if(snap.val()!==current){
+    errEl.style.display="block";errEl.textContent="現在のパスワードが正しくありません";return;
+  }
+  await db.ref("users/"+key+"/password").set(newPw);
+  document.getElementById("pw-current").value="";
+  document.getElementById("pw-new").value="";
+  document.getElementById("pw-confirm").value="";
+  toast("パスワードを変更しました");
+}
 function confirmDeleteAccount(){document.getElementById("confirm-bg").classList.add("open");}
 function closeConfirm(){document.getElementById("confirm-bg").classList.remove("open");}
 async function execDeleteAccount(){
