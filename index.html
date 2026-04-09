@@ -378,6 +378,7 @@ async function doLogin(){
       return;
     }
     currentEmail=email;
+    localStorage.setItem('boro_session', email); 
     if(u.isAdmin)showAdmin();
     else showUser(email,u);
   }catch(e){
@@ -395,6 +396,7 @@ function doLogout(){
   if(txnListener){txnListener();txnListener=null;}
   if(membersListener){membersListener();membersListener=null;}
   currentEmail=null;
+  localStorage.removeItem('boro_session'); 
   document.getElementById("l-email").value="";
   document.getElementById("l-pass").value="";
   document.getElementById("l-err").style.display="none";
@@ -666,8 +668,17 @@ function confirmDeleteAccount(){document.getElementById("confirm-bg").classList.
 function closeConfirm(){document.getElementById("confirm-bg").classList.remove("open");}
 async function execDeleteAccount(){
   if(!currentEmail)return;
-  const key=encodeKey(currentEmail);
-  try{
+  const ok=initFirebase();
+  if(ok){
+    await ensureAdminExists();
+    const saved=localStorage.getItem('boro_session');
+    if(saved){
+      const snap=await db.ref("users/"+encodeKey(saved)).once("value");
+      const u=snap.val();
+      if(u){currentEmail=saved;if(u.isAdmin)showAdmin();else showUser(saved,u);}
+    }
+  }
+  
     await db.ref("users/"+key).remove();
     await db.ref("transactions/"+key).remove();
     closeConfirm();
