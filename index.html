@@ -111,7 +111,7 @@ input,textarea,button{font-family:inherit;font-size:16px}
       <button class="btn" onclick="doLogout()">ログアウト</button></div>
     <div class="card"><div class="sec-hd">パスワード変更</div>
       <div class="form-field"><label>現在のパスワード</label><input type="password" id="pw-cur" placeholder="現在のパスワード"/></div>
-      <div class="form-field"><label>新しいパスワード</label><input type="password" id="pw-new" placeholder="6文字以上"/></div>
+      <div class="form-field"><label>新しいパスワード</label><input type="password" id="pw-new" placeholder="4文字以上"/></div>
       <div class="form-field"><label>新しいパスワード（確認）</label><input type="password" id="pw-cf" placeholder="もう一度入力"/></div>
       <div id="pw-err" class="error" style="display:none"></div>
       <button class="btn btn-green" onclick="doChangePassword()">変更する</button></div>
@@ -134,10 +134,10 @@ input,textarea,button{font-family:inherit;font-size:16px}
     <div class="sec-hd">新しい会員を追加</div><div class="card">
       <div class="form-field"><label>氏名</label><input type="text" id="n-name" placeholder="田中 花子"/></div>
       <div class="form-field"><label>メールアドレス</label><input type="email" id="n-email" placeholder="hanako@example.com" inputmode="email"/></div>
-      <div class="form-field"><label>初期パスワード</label><input type="text" id="n-pass" placeholder="例: pass1234" autocomplete="off"/></div>
+      <div class="form-field"><label>初期パスワード</label><input type="text" id="n-pass" placeholder="例: boro1234" autocomplete="off"/></div>
       <div class="form-field"><label>初期ボロ残高</label><input type="number" id="n-bal" value="0" inputmode="numeric"/></div>
       <div id="a-add-err" class="error" style="display:none"></div>
-      <button class="btn btn-green" onclick="doAddMember()">追加＆登録メールを作成</button></div>
+      <button class="btn btn-green" id="a-add-btn" onclick="doAddMember()">追加＆登録メールを作成</button></div>
   </div>
   <div class="tab-bar">
     <button class="tab-btn active" id="atab-m" onclick="showAdminTab('members')"><span class="tab-icon">👥</span>会員一覧</button>
@@ -166,88 +166,53 @@ input,textarea,button{font-family:inherit;font-size:16px}
   </div>
 </div>
 <div class="confirm-bg" id="confirm-bg">
-  <div class="confirm-box"><h3>アカウントを削除しますか？</h3><p>残高・履歴はすべて失われます。この操作は取り消せません。</p>
+  <div class="confirm-box"><h3>アカウントを削陨しますか？</h3><p>残高・履歴はすべて失われます。この操作は取り消せません。</p>
     <div class="confirm-btns"><button class="btn" style="flex:1" onclick="closeConfirm()">キャンセル</button><button class="btn btn-red" style="flex:1" onclick="execDeleteAccount()">削除する</button></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
 <script>
-// ==================================================
-// 設定値（変更不要）
-// ==================================================
-const PROJECT  = "boro-passbook";
-const API_KEY  = "AIzaSyBWH4iQo3R91RZrU6TuDF99wfZVuVWeTvc";
-const FS_BASE  = "https://firestore.googleapis.com/v1/projects/"+PROJECT+"/databases/(default)/documents";
-const APP_URL        = "https://horsemadelandscape.github.io/boro-passbook/";
+// ==============================================
+// 設定値
+// ==============================================
+const DB_URL   = "https://boro-passbook-default-rtdb.asia-southeast1.firebasedatabase.app";
+const APP_URL  = "https://horsemadelandscape.github.io/boro-passbook/";
 const ADMIN_EMAIL    = "admin@farm.com";
 const ADMIN_PASSWORD = "admin1234";
-// ==================================================
+// ==============================================
 
-function encKey(e){return e.replace(/\./g,"__").replace(/@/g,"_AT_")}
-function decKey(k){return k.replace(/__/g,".").replace(/_AT_/g,"@")}
+// メールアドレス → DBキー変換
+// @ → _AT_、. → _DOT_
+function encKey(e){return e.replace(/\./g,"_DOT_").replace(/@/g,"_AT_")}
+function decKey(k){return k.replace(/_DOT_/g,".").replace(/_AT_/g,"@")}
 
-// Firestoreの型付きフィールドをプレーンなオブジェクトに変換
-function fromFS(doc){
-  if(!doc||!doc.fields)return null;
-  const o={};
-  for(const[k,v]of Object.entries(doc.fields)){
-    if("stringValue"in v)o[k]=v.stringValue;
-    else if("integerValue"in v)o[k]=parseInt(v.integerValue);
-    else if("booleanValue"in v)o[k]=v.booleanValue;
-    else if("doubleValue"in v)o[k]=v.doubleValue;
-  }
-  return o;
+// Realtime Database REST API
+async function dbGet(path){
+  const r=await fetch(DB_URL+"/"+path+".json");
+  if(!r.ok)throw new Error("GET "+r.status);
+  return r.json();
 }
-// プレーンなオブジェクトをFirestoreの型付きフィールドに変換
-function toFS(obj){
-  const fields={};
-  for(const[k,v]of Object.entries(obj)){
-    if(typeof v==="string")fields[k]={stringValue:v};
-    else if(typeof v==="boolean")fields[k]={booleanValue:v};
-    else if(Number.isInteger(v))fields[k]={integerValue:String(v)};
-    else if(typeof v==="number")fields[k]={doubleValue:v};
-  }
-  return{fields};
+async function dbSet(path,val){
+  const r=await fetch(DB_URL+"/"+path+".json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(val)});
+  if(!r.ok)throw new Error("SET "+r.status);
+  return r.json();
 }
-
-async function fsGet(col,id){
-  const r=await fetch(FS_BASE+"/"+col+"/"+id+"?key="+API_KEY);
-  if(r.status===404)return null;
-  if(!r.ok)throw new Error("GET "+r.status+": "+await r.text());
-  return fromFS(await r.json());
+async function dbUpdate(path,val){
+  const r=await fetch(DB_URL+"/"+path+".json",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(val)});
+  if(!r.ok)throw new Error("UPDATE "+r.status);
+  return r.json();
 }
-async function fsSet(col,id,data){
-  const mask=Object.keys(data).map(f=>"updateMask.fieldPaths="+encodeURIComponent(f)).join("&");
-  const r=await fetch(FS_BASE+"/"+col+"/"+id+"?"+mask+"&key="+API_KEY,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(toFS(data))});
-  if(!r.ok)throw new Error("SET "+r.status+": "+await r.text());
-  return fromFS(await r.json());
-}
-async function fsDel(col,id){
-  const r=await fetch(FS_BASE+"/"+col+"/"+id+"?key="+API_KEY,{method:"DELETE"});
-  if(!r.ok&&r.status!==404)throw new Error("DEL "+r.status);
-}
-async function fsList(col){
-  const r=await fetch(FS_BASE+"/"+col+"?key="+API_KEY);
-  if(!r.ok)throw new Error("LIST "+r.status+": "+await r.text());
-  const d=await r.json();
-  if(!d.documents)return[];
-  return d.documents.map(doc=>({id:doc.name.split("/").pop(),...fromFS(doc)}));
-}
-async function fsQuery(col,field,value){
-  const body={structuredQuery:{from:[{collectionId:col}],where:{fieldFilter:{field:{fieldPath:field},op:"EQUAL",value:{stringValue:value}}},orderBy:[{field:{fieldPath:"ts"},direction:"ASCENDING"}]}};
-  const url=FS_BASE.replace("/documents","")+":runQuery?key="+API_KEY;
-  const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  if(!r.ok)throw new Error("QUERY "+r.status);
-  const results=await r.json();
-  return results.filter(x=>x.document).map(x=>({id:x.document.name.split("/").pop(),...fromFS(x.document)}));
+async function dbDelete(path){
+  const r=await fetch(DB_URL+"/"+path+".json",{method:"DELETE"});
+  if(!r.ok&&r.status!==404)throw new Error("DELETE "+r.status);
 }
 
+// ポーリング
 let _polls={};
 function startPoll(id,fn,ms=6000){stopPoll(id);fn();_polls[id]=setInterval(fn,ms);}
 function stopPoll(id){clearInterval(_polls[id]);delete _polls[id];}
 function stopAllPolls(){Object.keys(_polls).forEach(stopPoll);}
 
-function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,5)}
 function today(){const d=new Date();return d.getFullYear()+"/"+(d.getMonth()+1).toString().padStart(2,"0")+"/"+d.getDate().toString().padStart(2,"0")}
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
 function initials(n){const p=n.trim().split(/\s+/);return p.length>=2?p[0][0]+p[1][0]:n.slice(0,2)}
@@ -256,8 +221,8 @@ function showScreen(id){document.querySelectorAll(".screen").forEach(s=>s.classL
 let currentEmail=null,txnModal=null,delTarget=null;
 
 async function ensureAdmin(){
-  const existing=await fsGet("users",encKey(ADMIN_EMAIL));
-  if(!existing)await fsSet("users",encKey(ADMIN_EMAIL),{name:"管理者",password:ADMIN_PASSWORD,balance:0,isAdmin:true});
+  const u=await dbGet("users/"+encKey(ADMIN_EMAIL));
+  if(!u)await dbSet("users/"+encKey(ADMIN_EMAIL),{name:"管理者",password:ADMIN_PASSWORD,balance:0,isAdmin:true});
 }
 
 async function doLogin(){
@@ -267,7 +232,7 @@ async function doLogin(){
   const btn=document.getElementById("l-btn");
   errEl.style.display="none";btn.textContent="確認中...";btn.disabled=true;
   try{
-    const u=await fsGet("users",encKey(email));
+    const u=await dbGet("users/"+encKey(email));
     if(!u||u.password!==pass){errEl.style.display="block";errEl.textContent="メールアドレスまたはパスワードが正しくありません";return;}
     currentEmail=email;localStorage.setItem("boro_session",email);
     if(u.isAdmin)showAdmin();else showUser(email,u);
@@ -291,11 +256,13 @@ function showUser(email,u){
   showUserTab("home");showScreen("s-user");
   const key=encKey(email);
   startPoll("uBal",async()=>{
-    const d=await fsGet("users",key);
+    const d=await dbGet("users/"+key);
     if(d)document.getElementById("u-balance").textContent=(d.balance||0).toLocaleString();
   });
   startPoll("uTxn",async()=>{
-    const txns=await fsQuery("transactions","userKey",key);
+    const data=await dbGet("transactions/"+key);
+    const txns=data?Object.values(data):[];
+    txns.sort((a,b)=>String(a.ts||"").localeCompare(String(b.ts||"")));
     renderTxns(txns);
   });
 }
@@ -303,8 +270,7 @@ function showUser(email,u){
 function renderTxns(txns){
   const el=document.getElementById("u-txns");
   if(!txns.length){el.innerHTML='<div class="empty">履歴がありません</div>';return;}
-  const sorted=[...txns].sort((a,b)=>String(a.ts||"").localeCompare(String(b.ts||"")));
-  el.innerHTML=sorted.reverse().map(t=>`
+  el.innerHTML=[...txns].reverse().map(t=>`
     <div class="txn-item">
       <div style="flex:1;min-width:0"><div class="txn-date">${esc(t.date)}</div>${t.note?`<div class="txn-note">${esc(t.note)}</div>`:""}</div>
       <div class="txn-right"><div class="txn-amt ${t.amount>=0?"plus":"minus"}">${t.amount>=0?"+":""}${t.amount.toLocaleString()}</div><div class="txn-bal">${(t.balance||0).toLocaleString()} ボロ</div></div>
@@ -322,8 +288,8 @@ function showUserTab(tab){
 function showAdmin(){
   showAdminTab("members");showScreen("s-admin");
   startPoll("members",async()=>{
-    const all=await fsList("users");
-    const members=all.filter(u=>decKey(u.id)!==ADMIN_EMAIL);
+    const data=await dbGet("users");
+    const members=data?Object.entries(data).filter(([k])=>decKey(k)!==ADMIN_EMAIL).map(([k,v])=>({key:k,email:decKey(k),...v})):[];
     renderMembers(members);
   });
 }
@@ -332,22 +298,20 @@ function renderMembers(members){
   document.getElementById("a-count-hd").textContent="会員一覧（"+members.length+"名）";
   const el=document.getElementById("member-list");
   if(!members.length){el.innerHTML='<div class="empty">会員がいません</div>';return;}
-  el.innerHTML=members.map(u=>{
-    const email=decKey(u.id);
-    return `<div class="member-item">
+  el.innerHTML=members.map(u=>`
+    <div class="member-item">
       <div class="avatar">${initials(u.name)}</div>
       <div class="member-info">
         <div class="member-name">${esc(u.name)}</div>
-        <div class="member-email">${esc(email)}</div>
+        <div class="member-email">${esc(u.email)}</div>
         <div class="member-acts">
-          <button class="btn btn-sm btn-green" onclick="openTxnSheet('pay',this.dataset.e,this.dataset.n)" data-e="${email}" data-n="${u.name}">支払い</button>
-          <button class="btn btn-sm btn-outline-red" style="border-width:1px" onclick="openTxnSheet('recv',this.dataset.e,this.dataset.n)" data-e="${email}" data-n="${u.name}">受取り</button>
-          <button class="btn btn-sm btn-outline-red" style="border-width:1px;font-size:13px" onclick="openDelSheet(this.dataset.e,this.dataset.n)" data-e="${email}" data-n="${u.name}">削除</button>
+          <button class="btn btn-sm btn-green" onclick="openTxnSheet('pay',this.dataset.e,this.dataset.n)" data-e="${u.email}" data-n="${u.name}">支払い</button>
+          <button class="btn btn-sm btn-outline-red" style="border-width:1px" onclick="openTxnSheet('recv',this.dataset.e,this.dataset.n)" data-e="${u.email}" data-n="${u.name}">受取り</button>
+          <button class="btn btn-sm btn-outline-red" style="border-width:1px;font-size:13px" onclick="openDelSheet(this.dataset.e,this.dataset.n)" data-e="${u.email}" data-n="${u.name}">削除</button>
         </div>
       </div>
       <div><div class="member-bal">${(u.balance||0).toLocaleString()}<small>ボロ</small></div></div>
-    </div>`;
-  }).join("");
+    </div>`).join("");
 }
 
 function showAdminTab(tab){
@@ -359,9 +323,8 @@ function showAdminTab(tab){
 }
 
 function openTxnSheet(type,email,name){
-  fsGet("users",encKey(email)).then(u=>{
-    const bal=(u&&u.balance)||0;
-    txnModal={type,email,name,bal};
+  dbGet("users/"+encKey(email)+"/balance").then(bal=>{
+    bal=bal||0;txnModal={type,email,name,bal};
     const isPay=type==="pay";
     document.getElementById("sh-title").textContent=isPay?name+" さんへ支払い":name+" さんから受取り";
     document.getElementById("sh-curbal").textContent=bal.toLocaleString()+" ボロ";
@@ -386,14 +349,13 @@ async function doTransaction(){
   const btn=document.getElementById("sh-exec");btn.disabled=true;btn.textContent="処理中...";
   try{
     const key=encKey(m.email);
-    const u=await fsGet("users",key);
-    const curBal=(u&&u.balance)||0;
+    const curBal=(await dbGet("users/"+key+"/balance"))||0;
     const delta=m.type==="pay"?amt:-amt;
     const newBal=curBal+delta;
     if(newBal<0){errEl.style.display="block";errEl.textContent="残高不足（現在: "+curBal+" ボロ）";return;}
     const ts=Date.now().toString();
-    await fsSet("users",key,{balance:newBal});
-    await fsSet("transactions",key+"_"+ts,{userKey:key,ts,date:today(),amount:delta,note,balance:newBal});
+    await dbUpdate("users/"+key,{balance:newBal});
+    await dbSet("transactions/"+key+"/"+ts,{ts,date:today(),amount:delta,note,balance:newBal});
     closeTxnSheet();
     toast(m.type==="pay"?m.name+"さんへ "+amt+"ボロ 支払いました":m.name+"さんから "+amt+"ボロ 受け取りました");
   }catch(e){errEl.style.display="block";errEl.textContent="エラー: "+e.message;}
@@ -408,14 +370,15 @@ async function doAddMember(){
   const errEl=document.getElementById("a-add-err");errEl.style.display="none";
   if(!name||!email||!pass){errEl.style.display="block";errEl.textContent="氏名・メール・パスワードは必須です";return;}
   if(!/^[^@]+@[^@]+\.[^@]+$/.test(email)){errEl.style.display="block";errEl.textContent="有効なメールアドレスを入力してください";return;}
-  const btn=document.querySelector("#a-tab-add .btn-green");btn.disabled=true;btn.textContent="登録中...";
+  const btn=document.getElementById("a-add-btn");btn.disabled=true;btn.textContent="登録中...";
   try{
-    const existing=await fsGet("users",encKey(email));
+    const existing=await dbGet("users/"+encKey(email));
     if(existing){errEl.style.display="block";errEl.textContent="そのメールアドレスは既に登録されています";return;}
-    const all=await fsList("users");
-    if(all.filter(u=>decKey(u.id)!==ADMIN_EMAIL).length>=30){errEl.style.display="block";errEl.textContent="会員数の上限（30名）に達しています";return;}
-    await fsSet("users",encKey(email),{name,password:pass,balance:bal,isAdmin:false});
-    if(bal>0){const ts=Date.now().toString();await fsSet("transactions",encKey(email)+"_"+ts,{userKey:encKey(email),ts,date:today(),amount:bal,note:"初期残高",balance:bal});}
+    const allUsers=await dbGet("users")||{};
+    const count=Object.keys(allUsers).filter(k=>decKey(k)!==ADMIN_EMAIL).length;
+    if(count>=30){errEl.style.display="block";errEl.textContent="会員数の上限（30名）に達しています";return;}
+    await dbSet("users/"+encKey(email),{name,password:pass,balance:bal,isAdmin:false});
+    if(bal>0){const ts=Date.now().toString();await dbSet("transactions/"+encKey(email)+"/"+ts,{ts,date:today(),amount:bal,note:"初期残高",balance:bal});}
     ["n-name","n-email","n-pass"].forEach(id=>document.getElementById(id).value="");
     document.getElementById("n-bal").value="0";
     openMailSheet(name,email,pass,bal);
@@ -425,21 +388,35 @@ async function doAddMember(){
 
 function openMailSheet(name,email,pass,bal){
   const sub=encodeURIComponent("【ボロ通帳】アカウント登録完了のお知らせ");
-  const bodyLines=["こんにちは、"+name+"さん。","","農園通貨「ボロ」の通帳システムへ登録されました。","以下の情報でログインしてください。","","---","アプリ URL: "+APP_URL,"メールアドレス: "+email,"パスワード: "+pass,"初期残高: "+bal+"ボロ","---","","ログイン後、パスワードの変更をお將めします。","どうぞよろしくお願いいたします。"];
-  const body=bodyLines.join("\n");
+  const lines=[
+    "こんにちは、"+name+"さん。","",
+    "農園通貨「ボロ」の通帳システムへ登録されました。",
+    "以下の情報でログインしてください。","","---",
+    "アプリ URL: "+APP_URL,
+    "メールアドレス: "+email,
+    "パスワード: "+pass,
+    "初期残高: "+bal+"ボロ",
+    "---","",
+    "ログイン後、パスワードの変更をお將めします。",
+    "どうぞよろしくお願いいたします。"
+  ];
+  const body=lines.join("\n");
   const enc=encodeURIComponent(body);
   const mailto="mailto:"+encodeURIComponent(email)+"?subject="+sub+"&body="+enc;
   const gmail="https://mail.google.com/mail/?view=cm&fs=1&to="+encodeURIComponent(email)+"&su="+sub+"&body="+enc;
   const gmailApp="googlegmail:///co?to="+encodeURIComponent(email)+"&subject="+sub+"&body="+enc;
   document.getElementById("mail-preview").innerHTML="<strong>宛先:</strong> "+esc(email)+"<br><strong>氏名:</strong> "+esc(name)+"<br><strong>パスワード:</strong> "+esc(pass)+"<br><strong>初期残高:</strong> "+bal+"ボロ";
   const btns=document.getElementById("mail-btns");btns.innerHTML="";
-  function mkBtn(href,bg,text,target){
-    const a=document.createElement("a");a.href=href;a.style.cssText="display:flex;align-items:center;justify-content:center;padding:14px;border-radius:var(--rs);font-size:15px;font-weight:500;text-decoration:none;color:#fff;background:"+bg+";margin-bottom:10px";
+  function mkA(href,bg,text,target){
+    const a=document.createElement("a");a.href=href;
+    a.style.cssText="display:flex;align-items:center;justify-content:center;padding:14px;border-radius:var(--rs);font-size:15px;font-weight:500;text-decoration:none;color:#fff;background:"+bg+";margin-bottom:10px";
     a.textContent=text;if(target)a.target=target;btns.appendChild(a);
   }
-  mkBtn(gmailApp,"#EA4335","📱 Gmailアプリで送る（スマホ）","");
-  mkBtn(gmail,"#c0392b","🌐 ブラウザのGmailで送る","_blank");
-  const a3=document.createElement("a");a3.href=mailto;a3.style.cssText="display:flex;align-items:center;justify-content:center;padding:14px;border-radius:var(--rs);font-size:14px;font-weight:500;text-decoration:none;color:var(--text2);background:var(--card);border:1px solid var(--border)";a3.textContent="📧 デフォルトのメールアプリ";btns.appendChild(a3);
+  mkA(gmailApp,"#EA4335","📱 Gmailアプリで送る（スマホ）","");
+  mkA(gmail,"#c0392b","🌐 ブラウザのGmailで送る","_blank");
+  const a3=document.createElement("a");a3.href=mailto;
+  a3.style.cssText="display:flex;align-items:center;justify-content:center;padding:14px;border-radius:var(--rs);font-size:14px;font-weight:500;text-decoration:none;color:var(--text2);background:var(--card);border:1px solid var(--border)";
+  a3.textContent="📧 デフォルトのメールアプリ";btns.appendChild(a3);
   document.getElementById("mail-overlay").classList.add("open");
   showAdminTab("members");
 }
@@ -455,11 +432,10 @@ async function execDeleteMember(){
   if(!delTarget)return;
   const{email,name}=delTarget;
   try{
-    await fsDel("users",encKey(email));
-    const txns=await fsQuery("transactions","userKey",encKey(email));
-    for(const t of txns)await fsDel("transactions",t.id);
+    await dbDelete("users/"+encKey(email));
+    await dbDelete("transactions/"+encKey(email));
     closeDelSheet();toast(name+"さんのアカウントを削除しました");
-  }catch(e){toast("削除エラー: "+e.message);}
+  }catch(e){toast("エラー: "+e.message);}
 }
 
 async function doChangePassword(){
@@ -468,11 +444,11 @@ async function doChangePassword(){
   const cf=document.getElementById("pw-cf").value;
   const errEl=document.getElementById("pw-err");errEl.style.display="none";
   if(!cur||!nw||!cf){errEl.style.display="block";errEl.textContent="すべての項目を入力してください";return;}
-  if(nw.length<6){errEl.style.display="block";errEl.textContent="新しいパスワードは6文字以上にしてください";return;}
+  if(nw.length<4){errEl.style.display="block";errEl.textContent="新しいパスワードは4文字以上にしてください";return;}
   if(nw!==cf){errEl.style.display="block";errEl.textContent="新しいパスワードが一致しません";return;}
-  const u=await fsGet("users",encKey(currentEmail));
-  if(!u||u.password!==cur){errEl.style.display="block";errEl.textContent="現在のパスワードが正しくありません";return;}
-  await fsSet("users",encKey(currentEmail),{password:nw});
+  const stored=await dbGet("users/"+encKey(currentEmail)+"/password");
+  if(stored!==cur){errEl.style.display="block";errEl.textContent="現在のパスワードが正しくありません";return;}
+  await dbUpdate("users/"+encKey(currentEmail),{password:nw});
   ["pw-cur","pw-new","pw-cf"].forEach(id=>document.getElementById(id).value="");
   toast("パスワードを変更しました");
 }
@@ -482,9 +458,8 @@ function closeConfirm(){document.getElementById("confirm-bg").classList.remove("
 async function execDeleteAccount(){
   if(!currentEmail)return;
   try{
-    const txns=await fsQuery("transactions","userKey",encKey(currentEmail));
-    for(const t of txns)await fsDel("transactions",t.id);
-    await fsDel("users",encKey(currentEmail));
+    await dbDelete("users/"+encKey(currentEmail));
+    await dbDelete("transactions/"+encKey(currentEmail));
     closeConfirm();doLogout();toast("アカウントを削除しました");
   }catch(e){toast("エラー: "+e.message);}
 }
@@ -494,7 +469,7 @@ async function execDeleteAccount(){
     await ensureAdmin();
     const saved=localStorage.getItem("boro_session");
     if(saved){
-      const u=await fsGet("users",encKey(saved));
+      const u=await dbGet("users/"+encKey(saved));
       if(u){currentEmail=saved;if(u.isAdmin)showAdmin();else showUser(saved,u);}
       else localStorage.removeItem("boro_session");
     }
